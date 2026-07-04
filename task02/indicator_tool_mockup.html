@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交互式股票指标分析工具 — 界面原型</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --red:#E24B4A;--green:#1D9E75;--purple:#534AB7;--coral:#F0997B;
+  --blue:#378ADD;--gray:#888780;--dark:#2C2C2A;--light:#F5F5F5;
+  --card:#FFFFFF;--border:#E0E0E0;--text:#333333;--muted:#999999;
+  --bg-hover:#F0F0F0;--panel-width:320px;
+  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;
+}
+body{font-family:var(--font-sans);background:var(--light);color:var(--text);min-height:100vh}
+.topbar{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;align-items:center;gap:16px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04);z-index:10;position:relative
+}
+.topbar .logo{font-size:15px;font-weight:500;color:var(--dark);white-space:nowrap}
+.topbar .sep{width:1px;height:24px;background:var(--border)}
+.topbar select,.topbar button,.topbar input{
+  font-size:13px;padding:6px 12px;border:1px solid var(--border);
+  border-radius:6px;background:var(--card);cursor:pointer;font-family:var(--font-sans)
+}
+.topbar select:hover,.topbar button:hover{border-color:#ccc}
+.topbar button.primary{background:var(--purple);color:#fff;border-color:var(--purple)}
+.topbar button.primary:hover{background:#4a3ea8}
+.topbar .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.topbar .badge{font-size:12px;color:var(--muted);background:var(--light);padding:4px 10px;border-radius:12px}
+
+.main-layout{display:flex;height:calc(100vh - 52px)}
+
+.sidebar{
+  width:var(--panel-width);min-width:var(--panel-width);background:var(--card);
+  border-right:1px solid var(--border);overflow-y:auto;padding:12px;
+  display:flex;flex-direction:column;gap:8px
+}
+.sidebar h3{font-size:13px;font-weight:500;color:var(--dark);padding:8px 4px 4px}
+.sidebar .section{border-bottom:1px solid var(--border);padding-bottom:12px}
+.sidebar .section:last-child{border-bottom:none}
+
+.indicator-item{
+  display:flex;align-items:center;gap:10px;padding:8px 4px;
+  border-radius:6px;transition:background 0.15s
+}
+.indicator-item:hover{background:var(--bg-hover)}
+.indicator-item .name{font-size:13px;font-weight:500;flex:1;min-width:60px}
+.indicator-item .desc{font-size:11px;color:var(--muted)}
+
+.toggle{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
+  background:#ccc;border-radius:20px;transition:0.2s}
+.toggle .slider:before{content:"";position:absolute;height:14px;width:14px;
+  left:3px;bottom:3px;background:white;border-radius:50%;transition:0.2s}
+.toggle input:checked+.slider{background:var(--purple)}
+.toggle input:checked+.slider:before{transform:translateX(16px)}
+
+.param-group{padding-left:4px;display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.param-row{display:flex;align-items:center;gap:8px}
+.param-row label{font-size:12px;color:var(--muted);width:70px;flex-shrink:0;text-align:right}
+.param-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;
+  background:#e0e0e0;border-radius:2px;outline:none}
+.param-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;
+  width:14px;height:14px;border-radius:50%;background:var(--purple);cursor:pointer}
+.param-row input[type=number]{
+  width:48px;font-size:12px;padding:3px 6px;border:1px solid var(--border);
+  border-radius:4px;text-align:center;font-family:var(--font-sans)
+}
+.param-row .val{font-size:12px;color:var(--dark);width:32px;text-align:center}
+
+.content{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.card{
+  background:var(--card);border-radius:10px;border:1px solid var(--border);
+  padding:12px 16px;box-shadow:0 1px 2px rgba(0,0,0,0.03)
+}
+.card h2{font-size:13px;font-weight:500;color:var(--dark);margin-bottom:8px;
+  display:flex;align-items:center;gap:8px}
+.card h2 .tag{font-size:11px;font-weight:400;color:var(--blue);
+  background:#E6F1FB;padding:2px 8px;border-radius:10px}
+.chart-wrap{position:relative;width:100%}
+.chart-main{height:360px}
+.chart-sub{height:180px}
+
+.placeholder-hint{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  color:var(--muted);font-size:14px;pointer-events:none
+}
+
+@media(max-width:1200px){
+  .main-layout{flex-direction:column}
+  .sidebar{width:100%;min-width:100%;max-height:200px;flex-shrink:0}
+  .content{height:calc(100vh - 252px)}
+}
+</style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<div class="topbar">
+  <span class="logo">指标分析工具</span>
+  <span class="sep"></span>
+  <select id="stockSelect">
+    <option value="kingfa" selected>金发科技 (600143.SH)</option>
+    <option value="catl">宁德时代 (300750.SZ)</option>
+    <option value="byd">比亚迪 (002594.SZ)</option>
+  </select>
+  <span class="badge" id="dataRangeBadge">2025-07 ~ 2026-07 · 250 条</span>
+  <div class="right">
+    <button id="resetBtn">重置默认</button>
+    <button class="primary">导出配置</button>
+  </div>
+</div>
+
+<!-- 主体布局 -->
+<div class="main-layout">
+
+  <!-- 左侧面板 -->
+  <div class="sidebar" id="sidebar">
+
+    <!-- 指标启用开关 -->
+    <div class="section">
+      <h3>指标面板</h3>
+
+      <div class="indicator-item">
+        <label class="toggle"><input type="checkbox" id="toggleMA" checked onchange="toggleIndicator('ma')"><span class="slider"></span></label>
+        <span class="name">MA 均线</span>
+        <span class="desc">5/10/20/60</span>
+      </div>
+
+      <div class="indicator-item">
+        <label class="toggle"><input type="checkbox" id="toggleRSI" checked onchange="toggleIndicator('rsi')"><span class="slider"></span></label>
+        <span class="name">RSI</span>
+        <span class="desc">Wilder 14</span>
+      </div>
+
+      <div class="indicator-item">
+        <label class="toggle"><input type="checkbox" id="toggleMACD" checked onchange="toggleIndicator('macd')"><span class="slider"></span></label>
+        <span class="name">MACD</span>
+        <span class="desc">12/26/9</span>
+      </div>
+
+      <div class="indicator-item">
+        <label class="toggle"><input type="checkbox" id="toggleBB" checked onchange="toggleIndicator('bb')"><span class="slider"></span></label>
+        <span class="name">布林带</span>
+        <span class="desc">20, 2.0</span>
+      </div>
+
+      <div class="indicator-item">
+        <label class="toggle"><input type="checkbox" id="toggleSharpe" checked onchange="toggleIndicator('sharpe')"><span class="slider"></span></label>
+        <span class="name">滚动夏普</span>
+        <span class="desc">60日</span>
+      </div>
+    </div>
+
+    <!-- 参数面板 -->
+    <div class="section" id="paramPanel">
+      <h3>参数调节 <span style="font-weight:400;color:var(--muted)">— 点击指标切换</span></h3>
+      <div id="maParams" class="param-group" style="display:none">
+        <div class="param-row"><label>周期 1</label><input type="range" min="2" max="120" value="5" oninput="onParamChange()"><input type="number" value="5"></div>
+        <div class="param-row"><label>周期 2</label><input type="range" min="2" max="120" value="10" oninput="onParamChange()"><input type="number" value="10"></div>
+        <div class="param-row"><label>周期 3</label><input type="range" min="2" max="120" value="20" oninput="onParamChange()"><input type="number" value="20"></div>
+        <div class="param-row"><label>周期 4</label><input type="range" min="2" max="120" value="60" oninput="onParamChange()"><input type="number" value="60"></div>
+      </div>
+
+      <div id="rsiParams" class="param-group" style="display:none">
+        <div class="param-row"><label>周期 N</label><input type="range" min="2" max="50" value="14" oninput="onParamChange()"><input type="number" value="14"></div>
+        <div class="param-row"><label>超买线</label><input type="range" min="50" max="95" value="70" oninput="onParamChange()"><input type="number" value="70"></div>
+        <div class="param-row"><label>超卖线</label><input type="range" min="5" max="50" value="30" oninput="onParamChange()"><input type="number" value="30"></div>
+      </div>
+
+      <div id="macdParams" class="param-group" style="display:none">
+        <div class="param-row"><label>快线 EMA</label><input type="range" min="2" max="50" value="12" oninput="onParamChange()"><input type="number" value="12"></div>
+        <div class="param-row"><label>慢线 EMA</label><input type="range" min="2" max="100" value="26" oninput="onParamChange()"><input type="number" value="26"></div>
+        <div class="param-row"><label>信号线</label><input type="range" min="2" max="30" value="9" oninput="onParamChange()"><input type="number" value="9"></div>
+      </div>
+
+      <div id="bbParams" class="param-group" style="display:none">
+        <div class="param-row"><label>周期 N</label><input type="range" min="5" max="60" value="20" oninput="onParamChange()"><input type="number" value="20"></div>
+        <div class="param-row"><label>倍数 K</label><input type="range" min="1" max="4" step="0.1" value="2" oninput="onParamChange()"><input type="number" value="2.0" step="0.1"></div>
+      </div>
+
+      <div id="sharpeParams" class="param-group" style="display:none">
+        <div class="param-row"><label>窗口 (天)</label><input type="range" min="20" max="252" value="60" oninput="onParamChange()"><input type="number" value="60"></div>
+        <div class="param-row"><label>无风险利率 %</label><input type="range" min="0" max="10" step="0.1" value="1.5" oninput="onParamChange()"><input type="number" value="1.5" step="0.1"></div>
+      </div>
+
+    </div>
+
+    <!-- 快捷提示 -->
+    <div class="section" style="padding-top:8px">
+      <div style="font-size:11px;color:var(--muted);line-height:1.7">
+        双击参数滑块恢复默认值<br>
+        右上角可导出当前配置<br>
+        所有计算在浏览器端完成
+      </div>
+    </div>
+  </div>
+
+  <!-- 主图表区 -->
+  <div class="content" id="chartArea">
+    <div class="card" id="cardMA">
+      <h2>K线图 + 均线 + 布林带 <span class="tag" id="maTrendTag">多头排列</span></h2>
+      <div class="chart-wrap chart-main"><canvas id="mainChart"></canvas></div>
+    </div>
+
+    <div class="card" id="cardRSI">
+      <h2>RSI 相对强弱指标 <span class="tag">当前: 58.3 — 中性</span></h2>
+      <div class="chart-wrap chart-sub"><canvas id="rsiChart"></canvas></div>
+    </div>
+
+    <div class="card" id="cardMACD">
+      <h2>MACD <span class="tag" id="macdSignalTag">金叉信号</span></h2>
+      <div class="chart-wrap chart-sub"><canvas id="macdChart"></canvas></div>
+    </div>
+
+    <div class="card" id="cardSharpe">
+      <h2>滚动夏普比率 (60日) <span class="tag">当前: 0.87</span></h2>
+      <div class="chart-wrap chart-sub"><canvas id="sharpeChart"></canvas></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ========== Mock Data Generation ==========
+const N = 250;
+const dates = [];
+const base = new Date('2025-07-01');
+for(let i = 0; i < N; i++){
+  const d = new Date(base);
+  d.setDate(d.getDate() + i);
+  if(d.getDay() !== 0 && d.getDay() !== 6){
+    dates.push(d.toISOString().slice(0,10));
+  }
+}
+const M = dates.length;
+
+function randomWalk(start, drift, vol, n){
+  const data = [start];
+  for(let i = 1; i < n; i++){
+    data.push(data[i-1] * (1 + drift + vol * (Math.random() - 0.48)));
+  }
+  return data;
+}
+
+// Generate realistic-looking data
+const close = (()=>{
+  const rw = randomWalk(12.5, 0.0003, 0.025, M);
+  return rw.map(v => Math.round(v * 100) / 100);
+})();
+
+const high = close.map((c,i) => Math.round(Math.max(c * (1 + Math.random() * 0.025), i > 0 ? close[i-1] : c * 0.98) * 100) / 100);
+const low = close.map((c,i) => Math.round(Math.min(c * (1 - Math.random() * 0.025), i > 0 ? close[i-1] : c * 1.02) * 100) / 100);
+const open = close.map((c,i) => {
+  const mid = (high[i] + low[i]) / 2;
+  return Math.round((mid + (Math.random() - 0.5) * (high[i] - low[i]) * 0.3) * 100) / 100;
+});
+const vol = close.map(() => Math.round(30000 + Math.random() * 120000));
+
+// Calculate indicators
+function calcMA(data, period){
+  const result = new Array(data.length).fill(null);
+  for(let i = period-1; i < data.length; i++){
+    let sum = 0;
+    for(let j = i - period + 1; j <= i; j++) sum += data[j];
+    result[i] = Math.round(sum / period * 100) / 100;
+  }
+  return result;
+}
+
+function ema(data, period){
+  const k = 2 / (period + 1);
+  const result = [data[0]];
+  for(let i = 1; i < data.length; i++){
+    result.push(Math.round((data[i] * k + result[i-1] * (1 - k)) * 100) / 100);
+  }
+  return result;
+}
+
+function calcRSI(data, period){
+  const rsi = new Array(data.length).fill(null);
+  const gains = [], losses = [];
+  for(let i = 1; i < data.length; i++){
+    const d = data[i] - data[i-1];
+    gains.push(Math.max(d, 0));
+    losses.push(Math.max(-d, 0));
+  }
+  let avgGain = gains.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  let avgLoss = losses.slice(0, period).reduce((a,b) => a+b, 0) / period;
+  rsi[period] = avgLoss === 0 ? 100 : Math.round((100 - 100/(1 + avgGain/avgLoss)) * 100) / 100;
+  for(let i = period; i < gains.length; i++){
+    avgGain = (avgGain * (period-1) + gains[i]) / period;
+    avgLoss = (avgLoss * (period-1) + losses[i]) / period;
+    rsi[i+1] = avgLoss === 0 ? 100 : Math.round((100 - 100/(1 + avgGain/avgLoss)) * 100) / 100;
+  }
+  return rsi;
+}
+
+function calcMACD(data, fast, slow, signal){
+  const emaFast = ema(data, fast);
+  const emaSlow = ema(data, slow);
+  const dif = emaFast.map((v,i) => Math.round((v - emaSlow[i]) * 100) / 100);
+  const dea = ema(dif, signal);
+  const bar = dif.map((v,i) => Math.round(2 * (v - dea[i]) * 100) / 100);
+  return { dif, dea, bar };
+}
+
+function calcBB(data, period, mult){
+  const mid = calcMA(data, period);
+  const up = new Array(data.length).fill(null);
+  const dn = new Array(data.length).fill(null);
+  for(let i = period-1; i < data.length; i++){
+    const slice = data.slice(i-period+1, i+1);
+    const m = mid[i];
+    const variance = slice.reduce((sum, v) => sum + (v-m)*(v-m), 0) / period;
+    const std = Math.sqrt(variance);
+    up[i] = Math.round((m + mult * std) * 100) / 100;
+    dn[i] = Math.round((m - mult * std) * 100) / 100;
+  }
+  return { mid, up, dn };
+}
+
+const ma5 = calcMA(close, 5);
+const ma10 = calcMA(close, 10);
+const ma20 = calcMA(close, 20);
+const ma60 = calcMA(close, 60);
+const rsiVal = calcRSI(close, 14);
+const macdVal = calcMACD(close, 12, 26, 9);
+const bbVal = calcBB(close, 20, 2.0);
+
+// Rolling Sharpe
+const dailyRet = close.map((c,i) => i === 0 ? 0 : (c - close[i-1]) / close[i-1]);
+const rollingSharpe = new Array(M).fill(null);
+for(let i = 60; i < M; i++){
+  const win = dailyRet.slice(i-60, i);
+  const mu = win.reduce((a,b) => a+b, 0) / 60;
+  const sig = Math.sqrt(win.reduce((s,v) => s + (v-mu)*(v-mu), 0) / 59);
+  rollingSharpe[i] = sig > 0 ? Math.round(((mu * 252 - 0.015) / (sig * Math.sqrt(252))) * 100) / 100 : null;
+}
+
+// Candle colors
+const csColors = close.map((c,i) => c >= open[i] ? '#E24B4A' : '#1D9E75');
+
+// ========== Charts ==========
+const commonOpts = {
+  responsive: true, maintainAspectRatio: false,
+  interaction: { intersect: false, mode: 'index' },
+  plugins: { legend: { display: false } },
+  scales: {
+    x: {
+      grid: { display: false },
+      ticks: { maxTicksLimit: 12, font: { size: 10 }, autoSkip: true, maxRotation: 0 }
+    }
+  }
+};
+
+// Candlestick plugin
+const csPlugin = {
+  id: 'candlestick',
+  afterDatasetsDraw(chart){
+    const ctx = chart.ctx, meta0 = chart.getDatasetMeta(0);
+    if(!meta0 || !meta0.data) return;
+    const xScale = chart.scales.x, yScale = chart.scales.y;
+    const bw = Math.max(2, xScale.width / Math.max(dates.length, 1) * 0.6);
+    ctx.save();
+    for(let i = 0; i < dates.length; i++){
+      const x = xScale.getPixelForValue(i);
+      const o = yScale.getPixelForValue(open[i]), c = yScale.getPixelForValue(close[i]);
+      const h = yScale.getPixelForValue(high[i]), l = yScale.getPixelForValue(low[i]);
+      const color = close[i] >= open[i] ? '#E24B4A' : '#1D9E75';
+      ctx.strokeStyle = color; ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(x, l); ctx.lineTo(x, h); ctx.stroke();
+      ctx.fillStyle = color;
+      const top = Math.min(o,c), bottom = Math.max(o,c);
+      ctx.fillRect(x - bw/2, top, bw, Math.max(bottom - top, 0.5));
+    }
+    ctx.restore();
+  }
+};
+
+// ---- Main Chart ----
+const mainCtx = document.getElementById('mainChart').getContext('2d');
+const mainChart = new Chart(mainCtx, {
+  type: 'line',
+  plugins: [csPlugin],
+  data: {
+    labels: dates,
+    datasets: [
+      { data: close, borderColor: 'transparent', pointRadius: 0 },
+      { label: 'MA5', data: ma5, borderColor: '#534AB7', borderWidth: 1.2, pointRadius: 0, fill: false },
+      { label: 'MA10', data: ma10, borderColor: '#F0997B', borderWidth: 1, pointRadius: 0, fill: false },
+      { label: 'MA20', data: ma20, borderColor: '#378ADD', borderWidth: 1, pointRadius: 0, fill: false },
+      { label: 'MA60', data: ma60, borderColor: '#888780', borderWidth: 1, pointRadius: 0, fill: false, borderDash: [3,3] },
+      { label: 'BB上轨', data: bbVal.up, borderColor: '#B5D4F4', borderWidth: 1, pointRadius: 0, fill: false },
+      { label: 'BB中轨', data: bbVal.mid, borderColor: '#378ADD', borderWidth: 0.8, borderDash: [2,4], pointRadius: 0, fill: false },
+      { label: 'BB下轨', data: bbVal.dn, borderColor: '#B5D4F4', borderWidth: 1, pointRadius: 0, fill: {target: 5, above: 'rgba(55,138,221,0.04)', below: 'rgba(55,138,221,0.04)'} },
+    ]
+  },
+  options: {
+    ...commonOpts,
+    scales: { ...commonOpts.scales, y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 }, callback: v => v.toFixed(1) } } },
+    plugins: { legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 10, font: { size: 10 }, filter: item => item.text !== '' } } }
+  }
+});
+
+// ---- RSI Chart ----
+const rsiCtx = document.getElementById('rsiChart').getContext('2d');
+const rsiChart = new Chart(rsiCtx, {
+  type: 'line',
+  data: {
+    labels: dates,
+    datasets: [
+      { label: 'RSI(14)', data: rsiVal, borderColor: '#534AB7', borderWidth: 1.5, pointRadius: 0, fill: false },
+      { label: '70', data: Array(M).fill(70), borderColor: '#E24B4A', borderWidth: 0.8, borderDash: [4,4], pointRadius: 0, fill: false },
+      { label: '30', data: Array(M).fill(30), borderColor: '#1D9E75', borderWidth: 0.8, borderDash: [4,4], pointRadius: 0, fill: false },
+    ]
+  },
+  options: {
+    ...commonOpts,
+    scales: { ...commonOpts.scales, y: { min: 0, max: 100, grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 }, stepSize: 20 } } },
+    plugins: { legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 8, font: { size: 10 }, filter: item => item.text !== '' } } }
+  }
+});
+
+// ---- MACD Chart ----
+const macdCtx = document.getElementById('macdChart').getContext('2d');
+const macdColors = macdVal.bar.map((v,i) => {
+  if(i === 0 || macdVal.bar[i-1] === null) return v >= 0 ? '#E24B4A' : '#1D9E75';
+  return v >= macdVal.bar[i-1] ? '#E24B4A' : '#1D9E75';
+});
+const macdChart = new Chart(macdCtx, {
+  type: 'bar',
+  data: {
+    labels: dates,
+    datasets: [
+      { type: 'bar', label: 'MACD', data: macdVal.bar, backgroundColor: macdColors, borderWidth: 0, order: 2 },
+      { type: 'line', label: 'DIF', data: macdVal.dif, borderColor: '#534AB7', borderWidth: 1.2, pointRadius: 0, fill: false, order: 1 },
+      { type: 'line', label: 'DEA', data: macdVal.dea, borderColor: '#F0997B', borderWidth: 1.2, pointRadius: 0, fill: false, order: 1 },
+    ]
+  },
+  options: {
+    ...commonOpts,
+    scales: { ...commonOpts.scales, y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 } } } },
+    plugins: { legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 8, font: { size: 10 }, filter: item => item.text !== '' } } }
+  }
+});
+
+// ---- Sharpe Chart ----
+const sharpeCtx = document.getElementById('sharpeChart').getContext('2d');
+const sharpePlot = rollingSharpe.map(v => v !== null ? v : NaN);
+const sharpeChart = new Chart(sharpeCtx, {
+  type: 'line',
+  data: {
+    labels: dates,
+    datasets: [
+      { label: '滚动夏普(60日)', data: sharpePlot, borderColor: '#534AB7', borderWidth: 1.5, pointRadius: 0, fill: false },
+      { label: '0', data: Array(M).fill(0), borderColor: '#888780', borderWidth: 0.5, borderDash: [2,4], pointRadius: 0, fill: false },
+      { label: '1.0', data: Array(M).fill(1), borderColor: '#1D9E75', borderWidth: 0.5, borderDash: [2,4], pointRadius: 0, fill: false },
+    ]
+  },
+  options: {
+    ...commonOpts,
+    scales: { ...commonOpts.scales, y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 10 } } } },
+    plugins: { legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 8, font: { size: 10 }, filter: item => item.text !== '' } } }
+  }
+});
+
+// ========== Interactions ==========
+function toggleIndicator(id){
+  const checked = document.getElementById('toggle' + id.toUpperCase()).checked;
+  const cardMap = { ma: 'cardMA', rsi: 'cardRSI', macd: 'cardMACD', bb: null, sharpe: 'cardSharpe' };
+  if(cardMap[id]){
+    document.getElementById(cardMap[id]).style.display = checked ? '' : 'none';
+  }
+  if(id === 'bb'){
+    mainChart.data.datasets.forEach((ds,i) => {
+      if(ds.label && ds.label.includes('BB')) ds.hidden = !checked;
+    });
+    mainChart.update();
+  }
+  // Show param panel for the toggled indicator
+  showParams(id);
+}
+
+function showParams(id){
+  const ids = ['ma','rsi','macd','bb','sharpe'];
+  ids.forEach(i => { document.getElementById(i+'Params').style.display = 'none'; });
+  const el = document.getElementById(id + 'Params');
+  if(el) el.style.display = '';
+}
+
+// Click indicator items to show params
+document.querySelectorAll('.indicator-item').forEach(item => {
+  item.addEventListener('click', function(e){
+    if(e.target.tagName === 'INPUT') return;
+    const text = this.querySelector('.name').textContent.trim();
+    const map = {'MA 均线':'ma','RSI':'rsi','MACD':'macd','布林带':'bb','滚动夏普':'sharpe'};
+    showParams(map[text] || 'ma');
+  });
+});
+
+// Default show MA params
+showParams('ma');
+
+function onParamChange(){
+  // In the mockup, this just logs. In production, it recalculates and redraws.
+  console.log('Param changed - would recalculate and redraw in production');
+}
+
+// Reset button
+document.getElementById('resetBtn').addEventListener('click', () => {
+  document.querySelectorAll('input[type=range]').forEach(slider => {
+    const numInput = slider.nextElementSibling;
+    const defaults = {5:5, 10:10, 20:20, 60:60, 14:14, 70:70, 30:30, 12:12, 26:26, 9:9, 1.5:1.5, 2.0:2.0};
+    slider.value = slider.getAttribute('value') || slider.value;
+    if(numInput) numInput.value = slider.value;
+  });
+});
+
+// Stock select
+document.getElementById('stockSelect').addEventListener('change', function(){
+  const ranges = {
+    kingfa: '2025-07 ~ 2026-07 · 250 条',
+    catl: '2025-06 ~ 2026-07 · 254 条',
+    byd: '2025-07 ~ 2026-07 · 248 条'
+  };
+  document.getElementById('dataRangeBadge').textContent = ranges[this.value] || '';
+  // In production: load CSV + refresh all charts
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,418 @@
+{
+  "meta": {
+    "task_id": "task02",
+    "title": "金发科技 (600143.SH) 价格指标计算与分析 Notebook",
+    "version": "1.0",
+    "created": "2026-07-04",
+    "author": "李婉霞",
+    "description": "以金发科技(沪市主板·新材料)为标的，通过 Jupyter Notebook 完整展示从数据获取到指标分析的全过程，包括技术指标计算、风险度量评估和可视化。选金发科技的原因：覆盖面广（沪市主板代表）、数据从零开始（流程干净）、处于新材料这一非热门行业，分析更具教学价值。"
+  },
+
+  "stock": {
+    "ts_code": "600143.SH",
+    "name": "金发科技",
+    "name_en": "Kingfa Technology",
+    "exchange": "SSE",
+    "market": "沪市主板",
+    "sector": "新材料",
+    "industry": "改性塑料与复合材料",
+    "data_source": "Tushare MCP (daily)",
+    "date_range": "近一年日线 (约 250 个交易日)",
+    "data_status": "pending"
+  },
+
+  "data_pipeline": [
+    {
+      "stage": 1,
+      "name": "获取日线行情",
+      "tool": "mcp__tushareMcp__daily",
+      "params": {
+        "ts_code": "600143.SH",
+        "start_date": "动态计算 (一年前)",
+        "end_date": "动态计算 (今天)"
+      },
+      "fields": "ts_code, trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount",
+      "output_column": "trade_date, open, high, low, close, pre_close, change, pct_chg, vol, amount",
+      "note": "按日期升序排列，trade_date 转为 datetime"
+    },
+    {
+      "stage": 2,
+      "name": "获取复权因子",
+      "tool": "mcp__tushareMcp__adj_factor",
+      "params": {
+        "ts_code": "600143.SH"
+      },
+      "fields": "ts_code, trade_date, adj_factor",
+      "note": "用于计算前复权和后复权价格"
+    },
+    {
+      "stage": 3,
+      "name": "获取每日基本面",
+      "tool": "mcp__tushareMcp__daily_basic",
+      "params": {
+        "ts_code": "600143.SH"
+      },
+      "fields": "ts_code, trade_date, pe, pe_ttm, pb, ps, ps_ttm, dv_ratio, dv_ttm, total_mv, circ_mv, turnover_rate, turnover_rate_f",
+      "note": "提供估值维度的补充分析"
+    },
+    {
+      "stage": 4,
+      "name": "获取财务指标 (季度)",
+      "tool": "mcp__tushareMcp__fina_indicator",
+      "params": {
+        "ts_code": "600143.SH"
+      },
+      "fields": "ts_code, end_date, eps, roe, roa, grossprofit_margin, netprofit_margin, debt_to_assets, current_ratio, quick_ratio",
+      "note": "季度频率，用于基本面质量的背景分析"
+    }
+  ],
+
+  "indicators": {
+    "description": "逐类定义所有需要在 Notebook 中计算的指标，包含公式、参数和 Notebook 中的展示单元",
+
+    "category_1_basic": {
+      "name": "基础收益指标",
+      "cells": [
+        {
+          "id": "daily_return",
+          "name": "日收益率 (Daily Return)",
+          "formula": "R_t = (P_t - P_{t-1}) / P_{t-1}",
+          "python": "df['daily_ret'] = df['close'].pct_change()",
+          "description": "价格变动的百分比，所有后续风险指标的基础"
+        },
+        {
+          "id": "log_return",
+          "name": "对数收益率 (Log Return)",
+          "formula": "r_t = ln(P_t / P_{t-1})",
+          "python": "df['log_ret'] = np.log(df['close'] / df['close'].shift(1))",
+          "description": "对数收益率具有时间可加性，更符合正态假设"
+        },
+        {
+          "id": "cumulative_return",
+          "name": "累计收益 (Cumulative Return)",
+          "formula": "CR_t = ∏_{i=1}^{t} (1 + R_i) - 1",
+          "python": "df['cum_ret'] = (1 + df['daily_ret']).cumprod() - 1",
+          "description": "以 1 元为基数的累计净值曲线"
+        }
+      ]
+    },
+
+    "category_2_technical": {
+      "name": "技术指标",
+      "cells": [
+        {
+          "id": "ma",
+          "name": "移动平均线 (MA)",
+          "formula": "MA_n(t) = (1/n) × Σ_{i=t-n+1}^{t} P_i",
+          "params": "n ∈ {5, 10, 20, 60}",
+          "python": "df['ma5'] = df['close'].rolling(5).mean()",
+          "description": "用 pandas rolling 实现，四条均线覆盖短/中/长期趋势"
+        },
+        {
+          "id": "rsi",
+          "name": "相对强弱指标 (RSI)",
+          "formula": "RS = AvgGain_14 / AvgLoss_14;  RSI = 100 - 100/(1+RS)",
+          "params": "period = 14, Wilder's smoothing",
+          "python": "自定义函数 (需从零实现 EMA 平滑)",
+          "description": "Wilder平滑方式，首期简单平均，后续 EMA 递推。>70 超买，<30 超卖",
+          "reusable_fn": "calc_rsi(prices, period=14)"
+        },
+        {
+          "id": "macd",
+          "name": "指数平滑异同移动平均线 (MACD)",
+          "formula": "DIF = EMA(P,12) - EMA(P,26);  DEA = EMA(DIF,9);  BAR = 2×(DIF-DEA)",
+          "params": "fast=12, slow=26, signal=9",
+          "python": "自定义 EMA 函数 + 差分",
+          "description": "直接实现 EMA 递推公式，不依赖 talib。金叉=DIF上穿DEA，死叉=DIF下穿DEA",
+          "reusable_fn": "ema(series, period); macd(prices, 12, 26, 9)"
+        },
+        {
+          "id": "bollinger",
+          "name": "布林带 (Bollinger Bands)",
+          "formula": "MID = SMA(P,20);  UP = MID + 2σ;  DN = MID - 2σ",
+          "params": "period=20, multiplier=2, ddof=0 (总体标准差)",
+          "python": "df['bb_mid'] = df['close'].rolling(20).mean(); df['bb_std'] = df['close'].rolling(20).std(ddof=0)",
+          "description": "用总体标准差(ddof=0)与 John Bollinger 原论文一致"
+        }
+      ]
+    },
+
+    "category_3_risk": {
+      "name": "风险度量指标",
+      "cells": [
+        {
+          "id": "annualized_return",
+          "name": "年化收益率",
+          "formula": "R_ann = μ_daily × 252",
+          "python": "ann_ret = daily_ret.mean() * 252",
+          "description": "基于日收益均值的年化"
+        },
+        {
+          "id": "annualized_volatility",
+          "name": "年化波动率",
+          "formula": "σ_ann = σ_daily × √252",
+          "python": "ann_vol = daily_ret.std(ddof=1) * np.sqrt(252)",
+          "description": "基于日收益标准差的年化，用 ddof=1 (样本标准差)"
+        },
+        {
+          "id": "sharpe_ratio",
+          "name": "夏普比率",
+          "formula": "Sharpe = (R_ann - R_f) / σ_ann",
+          "params": "R_f = 1.5% (中国一年期国债收益率)",
+          "python": "sharpe = (ann_ret - 0.015) / ann_vol",
+          "description": "单位风险超额收益。>1 良好，>2 优秀，<0 跑输无风险利率"
+        },
+        {
+          "id": "max_drawdown",
+          "name": "最大回撤",
+          "formula": "MDD = min( (P_t - Peak_t) / Peak_t )",
+          "python": "cum = (1+df['daily_ret']).cumprod(); peak = cum.cummax(); dd = (cum-peak)/peak; mdd = dd.min()",
+          "description": "从历史最高点到后续最低点的最大跌幅"
+        },
+        {
+          "id": "calmar_ratio",
+          "name": "卡玛比率",
+          "formula": "Calmar = R_ann / |MDD|",
+          "python": "calmar = ann_ret / abs(max_dd)",
+          "description": "年化收益除以最大回撤的绝对值，衡量回撤调整后收益"
+        },
+        {
+          "id": "skewness_kurtosis",
+          "name": "偏度与峰度",
+          "formula": "S = E[(R-μ)³]/σ³;  K = E[(R-μ)⁴]/σ⁴",
+          "python": "from scipy.stats import skew, kurtosis",
+          "description": "偏度衡量收益率分布的不对称性(正偏=右尾厚)，峰度衡量尾部厚度(>3 为厚尾)"
+        },
+        {
+          "id": "var_cvar",
+          "name": "VaR 与 CVaR",
+          "formula": "VaR_95 = 5th percentile of daily returns;  CVaR_95 = mean of returns below VaR_95",
+          "params": "置信水平 95%",
+          "python": "var95 = np.percentile(daily_ret, 5); cvar95 = daily_ret[daily_ret <= var95].mean()",
+          "description": "VaR: 95%置信度下最大日损失; CVaR: 超过VaR后的期望损失"
+        },
+        {
+          "id": "rolling_metrics",
+          "name": "滚动指标 (60日窗口)",
+          "formula": "滚动计算年化收益、波动率、夏普比率",
+          "params": "窗口 = 60 个交易日",
+          "python": "for i in range(60, n): window = daily_ret[i-60:i]; ...",
+          "description": "展示指标的时间动态变化，观察趋势而非单一数字"
+        }
+      ]
+    }
+  },
+
+  "visualizations": {
+    "description": "Notebook 中的可视化单元，每个单元使用 matplotlib 绘制、搭配 markdown 分析文字",
+    "plots": [
+      {
+        "id": "price_candlestick",
+        "title": "收盘价 + MA 均线叠加",
+        "type": "matplotlib line",
+        "elements": "收盘价折线, MA5(红线), MA10(橙线), MA20(绿线), MA60(蓝线)",
+        "annotation": "标注多头/空头排列区间"
+      },
+      {
+        "id": "technical_panel",
+        "title": "四面板技术指标面板",
+        "type": "matplotlib subplots (4×1)",
+        "subplots": [
+          "Panel 1: K线 + Bollinger Bands (20,2) + EMA12/26",
+          "Panel 2: 成交量柱状图 (红涨绿跌)",
+          "Panel 3: RSI(14) + 70/30 参考线",
+          "Panel 4: MACD 柱状图 + DIF/DEA 线"
+        ]
+      },
+      {
+        "id": "risk_distribution",
+        "title": "日收益率分布直方图 + 正态拟合",
+        "type": "matplotlib hist + scipy norm fit",
+        "annotation": "标注偏度、峰度、VaR95 阈值线"
+      },
+      {
+        "id": "cumulative_performance",
+        "title": "累计收益 + 回撤曲线",
+        "type": "matplotlib dual-axis",
+        "top": "累计净值曲线 (以 1 为基准)",
+        "bottom": "回撤曲线 (百分比，负值)",
+        "annotation": "标注最大回撤点"
+      },
+      {
+        "id": "rolling_sharpe",
+        "title": "滚动 60 日夏普比率",
+        "type": "matplotlib line",
+        "elements": "滚动夏普比率曲线, 0 参考线, 1.0 参考线",
+        "annotation": "标注夏普为正/负的区间"
+      }
+    ]
+  },
+
+  "notebook_structure": {
+    "filename": "task02/kingfa_indicator_analysis.ipynb",
+    "kernel": "python3",
+    "sections": [
+      {
+        "heading": "## 0. 环境与数据准备",
+        "cells": [
+          {"type": "markdown", "content": "导入库说明：pandas, numpy, matplotlib, scipy.stats, json, warnings"},
+          {"type": "code", "content": "import 语句 + matplotlib 中文字体配置"},
+          {"type": "markdown", "content": "通过 Tushare MCP 获取金发科技(600143.SH)日线数据，展示 API 调用参数与返回字段"},
+          {"type": "code", "content": "调用 Tushare MCP daily 接口 → pandas DataFrame → 按日期排序 → info() 概览"},
+          {"type": "markdown", "content": "数据概览：行数、日期范围、缺失值检查"},
+          {"type": "code", "content": "df.describe() + 缺失值统计 + 日期范围打印"}
+        ]
+      },
+      {
+        "heading": "## 1. 基础收益计算",
+        "cells": [
+          {"type": "markdown", "content": "计算日收益率和对数收益率，解释两者的区别和适用场景"},
+          {"type": "code", "content": "daily_ret 和 log_ret 计算"},
+          {"type": "markdown", "content": "日收益率描述性统计：均值、标准差、偏度、峰度"},
+          {"type": "code", "content": "daily_ret.describe() + skew/kurtosis"}
+        ]
+      },
+      {
+        "heading": "## 2. 移动平均线与趋势分析",
+        "cells": [
+          {"type": "markdown", "content": "计算 MA5/10/20/60，解释各均线的含义：短期(5/10)反映动量，中期(20)体现月线趋势，长期(60)代表季线"},
+          {"type": "code", "content": "pandas rolling mean + 趋势判断逻辑"},
+          {"type": "markdown", "content": "收盘价与均线叠加图，标注多头/空头排列"},
+          {"type": "code", "content": "matplotlib 折线图 + 图例 + 标注"}
+        ]
+      },
+      {
+        "heading": "## 3. RSI — 相对强弱指标",
+        "cells": [
+          {"type": "markdown", "content": "RSI 原理：Wilder(1978) 提出的动量振荡器，衡量近期涨跌幅度的相对强弱。RSI>70 表示超买(可能回调)，RSI<30 表示超卖(可能反弹)"},
+          {"type": "code", "content": "自定义 calc_rsi() 函数 + 调用"},
+          {"type": "markdown", "content": "RSI 走势图 + 超买超卖信号统计"},
+          {"type": "code", "content": "matplotlib 折线图 + 70/30 参考线 + 区间填充"}
+        ]
+      },
+      {
+        "heading": "## 4. MACD — 指数平滑异同移动平均线",
+        "cells": [
+          {"type": "markdown", "content": "MACD 原理：Gerald Appel 提出的趋势跟踪指标，DIF=快慢EMA之差，DEA=DIF的EMA平滑，BAR=放大差异。金叉买入信号，死叉卖出信号"},
+          {"type": "code", "content": "自定义 ema() + macd() 函数"},
+          {"type": "markdown", "content": "MACD 柱状图 + 金叉死叉标记"},
+          {"type": "code", "content": "matplotlib 双面板 (DIF/DEA线 + MACD柱)"}
+        ]
+      },
+      {
+        "heading": "## 5. 布林带 — Bollinger Bands",
+        "cells": [
+          {"type": "markdown", "content": "布林带原理：John Bollinger(1980s) 提出的波动率通道，中轨=SMA20，上下轨=中轨±2σ。带宽收窄=低波动(可能变盘)，触及轨线=极端行情"},
+          {"type": "code", "content": "rolling mean/std 计算 + 带宽计算"},
+          {"type": "markdown", "content": "K线 + 布林带叠加图"},
+          {"type": "code", "content": "matplotlib K线 + 三轨 + 带宽副图"}
+        ]
+      },
+      {
+        "heading": "## 6. 四面板综合技术面板",
+        "cells": [
+          {"type": "markdown", "content": "将 K线+布林带、成交量、RSI、MACD 集成到一个四面板子图中，形成专业级技术分析看板"},
+          {"type": "code", "content": "matplotlib subplots(4,1) + 完整绘制逻辑"}
+        ]
+      },
+      {
+        "heading": "## 7. 风险度量分析",
+        "cells": [
+          {"type": "markdown", "content": "计算并解读年化收益、年化波动、夏普比率、最大回撤、卡玛比率"},
+          {"type": "code", "content": "8个风险指标的计算代码"},
+          {"type": "markdown", "content": "风险指标汇总表"},
+          {"type": "code", "content": "表格输出所有风险指标"},
+          {"type": "markdown", "content": "日收益率分布直方图 + 正态拟合 + VaR标注"},
+          {"type": "code", "content": "matplotlib hist + scipy.stats.norm.fit"}
+        ]
+      },
+      {
+        "heading": "## 8. 滚动指标与动态分析",
+        "cells": [
+          {"type": "markdown", "content": "60日滚动窗口计算年化收益、波动率、夏普比率，观察指标的时序动态"},
+          {"type": "code", "content": "滚动循环计算"},
+          {"type": "markdown", "content": "累计收益 + 回撤双轴图"},
+          {"type": "code", "content": "matplotlib twinx() 双轴"},
+          {"type": "markdown", "content": "滚动 60 日夏普比率走势"},
+          {"type": "code", "content": "matplotlib 折线图 + 参考线"}
+        ]
+      },
+      {
+        "heading": "## 9. 总结与投资启示",
+        "cells": [
+          {"type": "markdown", "content": "从技术面总结金发科技的价格特征：(1)趋势方向 (2)波动特征 (3)风险收益比 (4)与其他已分析股票(宁德时代)的对比观察"}
+        ]
+      }
+    ]
+  },
+
+  "quality_checks": {
+    "description": "Notebook 中内嵌的数据质量验证",
+    "checks": [
+      {"id": "QC-01", "name": "数据完整性", "rule": "close 列无 NaN，行数 ≥ 200", "action": "assert df['close'].isna().sum() == 0"},
+      {"id": "QC-02", "name": "OHLC 逻辑", "rule": "high ≥ max(open, close) 且 low ≤ min(open, close)", "action": "assert 逻辑检查通过"},
+      {"id": "QC-03", "name": "日期有序", "rule": "trade_date 严格递增", "action": "assert df['trade_date'].is_monotonic_increasing"},
+      {"id": "QC-04", "name": "收益率合理性", "rule": "日收益率在 [-15%, +15%] 范围内 (A股涨跌停边界)", "action": "assert daily_ret 无异常极端值"},
+      {"id": "QC-05", "name": "指标 NaN 对齐", "rule": "RSI 前 13 天为 NaN，MA60 前 59 天为 NaN", "action": "assert NaN 计数 = 预期值"},
+      {"id": "QC-06", "name": "复权价格一致性", "rule": "前/后复权价格不含 NaN 且趋势与原始收盘价一致", "action": "plot 三线对比"}
+    ]
+  },
+
+  "outputs": {
+    "description": "任务交付物清单",
+    "files": [
+      {
+        "path": "task02/spec.json",
+        "type": "spec",
+        "description": "本规范文件"
+      },
+      {
+        "path": "task02/kingfa_indicator_analysis.ipynb",
+        "type": "notebook",
+        "description": "金发科技指标分析主文件，包含所有 markdown 解释和代码单元，可直接在 Jupyter 中运行"
+      },
+      {
+        "path": "outputs/kingfa_daily_data.csv",
+        "type": "data",
+        "description": "金发科技日线行情原始数据"
+      },
+      {
+        "path": "outputs/kingfa_daily_full.csv",
+        "type": "data",
+        "description": "金发科技日线行情 + 全部计算指标汇总"
+      },
+      {
+        "path": "outputs/kingfa_technical_panel.png",
+        "type": "image",
+        "description": "四面板技术指标综合图 (PNG)"
+      },
+      {
+        "path": "outputs/kingfa_risk_analysis.png",
+        "type": "image",
+        "description": "风险分析图：收益分布 + 累计收益/回撤 + 滚动夏普"
+      },
+      {
+        "path": "outputs/kingfa_interactive_dashboard.html",
+        "type": "html",
+        "description": "交互式 K 线 + 技术指标面板 (Chart.js)"
+      }
+    ]
+  },
+
+  "nb_metadata": {
+    "kernel_info": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python",
+      "version": "3.13.12"
+    },
+    "dependencies": [
+      "pandas >= 2.0",
+      "numpy >= 1.24",
+      "matplotlib >= 3.7",
+      "scipy >= 1.10"
+    ]
+  }
+}

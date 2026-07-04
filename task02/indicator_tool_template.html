@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>交互式股票指标分析工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --red:#E24B4A;--green:#1D9E75;--purple:#534AB7;--coral:#F0997B;
+  --blue:#378ADD;--gray:#888780;--dark:#2C2C2A;--light:#F5F5F5;
+  --card:#FFFFFF;--border:#E0E0E0;--text:#333;--muted:#999;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif
+}
+body{font-family:var(--font);background:var(--light);color:var(--text);overflow:hidden;height:100vh;display:flex;flex-direction:column}
+.topbar{
+  background:var(--card);border-bottom:1px solid var(--border);padding:8px 16px;
+  display:flex;align-items:center;gap:12px;flex-shrink:0;z-index:10
+}
+.topbar .logo{font-size:15px;font-weight:500;color:var(--dark);white-space:nowrap}
+.topbar select{font-size:13px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer;font-family:var(--font)}
+.topbar .badge{font-size:11px;color:var(--muted);background:var(--light);padding:3px 8px;border-radius:10px}
+.topbar button{font-size:12px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card);cursor:pointer;font-family:var(--font)}
+.topbar button.primary{background:var(--purple);color:#fff;border-color:var(--purple)}
+.topbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+
+.main{display:flex;flex:1;overflow:hidden}
+.sidebar{
+  width:280px;min-width:280px;background:var(--card);border-right:1px solid var(--border);
+  overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px
+}
+.sidebar h3{font-size:12px;font-weight:500;color:var(--dark);padding:6px 4px 2px;text-transform:uppercase;letter-spacing:0.5px}
+.sidebar .section{border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:4px}
+.sidebar .section:last-child{border-bottom:none}
+
+.ind-item{
+  display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:6px;
+  cursor:pointer;transition:background .15s;user-select:none
+}
+.ind-item:hover{background:#f5f5f5}
+.ind-item.active{background:#EEEDFE}
+.ind-item .name{font-size:13px;font-weight:500;flex:1;min-width:60px}
+.ind-item .desc{font-size:11px;color:var(--muted)}
+.ind-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+.toggle{position:relative;display:inline-block;width:34px;height:18px;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0}
+.toggle .sl{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:18px;transition:.2s}
+.toggle .sl:before{content:"";position:absolute;height:12px;width:12px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+.toggle input:checked+.sl{background:var(--purple)}
+.toggle input:checked+.sl:before{transform:translateX(16px)}
+
+.params{display:flex;flex-direction:column;gap:6px;margin:4px 0 4px 4px}
+.param-row{display:flex;align-items:center;gap:6px}
+.param-row label{font-size:11px;color:var(--muted);width:60px;flex-shrink:0;text-align:right}
+.param-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;background:#e0e0e0;border-radius:2px;outline:none;cursor:pointer}
+.param-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:var(--purple);cursor:pointer}
+.param-row .val{font-size:11px;color:var(--dark);min-width:28px;text-align:center}
+.param-hint{font-size:10px;color:var(--muted);padding:2px 4px;margin-top:2px}
+
+.content{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px}
+.card{
+  background:var(--card);border-radius:8px;border:1px solid var(--border);
+  padding:10px 14px;box-shadow:0 1px 2px rgba(0,0,0,.03)
+}
+.card h2{font-size:13px;font-weight:500;color:var(--dark);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.card h2 .tag{font-size:11px;font-weight:400;padding:2px 8px;border-radius:8px;white-space:nowrap}
+.tag.pos{color:var(--red);background:#FCEBEB}
+.tag.neg{color:var(--green);background:#EAF3DE}
+.tag.neutral{color:var(--blue);background:#E6F1FB}
+.chart-main{height:370px;position:relative}
+.chart-sub{height:180px;position:relative}
+.empty-hint{
+  display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--muted);font-size:13px;user-select:none
+}
+
+@media(max-width:1100px){
+  .main{flex-direction:column}
+  .sidebar{width:100%;min-width:100%;max-height:160px}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="logo">指标分析工具</span>
+  <select id="stockSelect">
+    <option value="kingfa" selected>金发科技 (600143.SH)</option>
+    <option value="catl">宁德时代 (300750.SZ)</option>
+    <option value="byd">比亚迪 (002594.SZ)</option>
+  </select>
+  <span class="badge" id="dataInfo">加载中...</span>
+  <span class="badge" id="livePrice" style="font-weight:500"></span>
+  <div class="right">
+    <button id="btnReset">重置默认参数</button>
+  </div>
+</div>
+
+<div class="main">
+<div class="sidebar" id="sidebar">
+  <div class="section">
+    <h3>技术指标面板</h3>
+    <div class="ind-item active" id="indItem_price" onclick="selectIndicator('price')">
+      <span class="dot" style="background:var(--red)"></span>
+      <span class="name">K线 + 均线</span><span class="desc" id="indDesc_price">5/10/20/60</span>
+      <label class="toggle"><input type="checkbox" id="togPrice" checked onchange="togglePanel('price')"><span class="sl"></span></label>
+    </div>
+    <div class="ind-item active" id="indItem_rsi" onclick="selectIndicator('rsi')">
+      <span class="dot" style="background:var(--purple)"></span>
+      <span class="name">RSI</span><span class="desc" id="indDesc_rsi">Wilder 14</span>
+      <label class="toggle"><input type="checkbox" id="togRsi" checked onchange="togglePanel('rsi')"><span class="sl"></span></label>
+    </div>
+    <div class="ind-item active" id="indItem_macd" onclick="selectIndicator('macd')">
+      <span class="dot" style="background:var(--coral)"></span>
+      <span class="name">MACD</span><span class="desc" id="indDesc_macd">12/26/9</span>
+      <label class="toggle"><input type="checkbox" id="togMacd" checked onchange="togglePanel('macd')"><span class="sl"></span></label>
+    </div>
+    <div class="ind-item active" id="indItem_bb" onclick="selectIndicator('bb')">
+      <span class="dot" style="background:var(--blue)"></span>
+      <span class="name">布林带</span><span class="desc" id="indDesc_bb">20, 2.0</span>
+      <label class="toggle"><input type="checkbox" id="togBb" checked onchange="togglePanel('bb')"><span class="sl"></span></label>
+    </div>
+    <div class="ind-item active" id="indItem_sharpe" onclick="selectIndicator('sharpe')">
+      <span class="dot" style="background:var(--green)"></span>
+      <span class="name">滚动夏普</span><span class="desc" id="indDesc_sharpe">60日</span>
+      <label class="toggle"><input type="checkbox" id="togSharpe" checked onchange="togglePanel('sharpe')"><span class="sl"></span></label>
+    </div>
+    <div class="ind-item" id="indItem_volatility" onclick="selectIndicator('volatility')">
+      <span class="dot" style="background:var(--gray)"></span>
+      <span class="name">滚动波动率</span><span class="desc" id="indDesc_volatility">20日</span>
+      <label class="toggle"><input type="checkbox" id="togVolatility" onchange="togglePanel('volatility')"><span class="sl"></span></label>
+    </div>
+  </div>
+
+  <div class="section" id="paramSection">
+    <h3>参数调节 <span style="font-weight:400;color:var(--muted);font-size:10px">拖动滑块实时重绘</span></h3>
+    <div id="paramsPrice" class="params">
+      <div class="param-row"><label>MA1</label><input type="range" min="2" max="120" value="5" data-key="ma1" oninput="sliderChanged(this)"><span class="val" id="ma1Val">5</span></div>
+      <div class="param-row"><label>MA2</label><input type="range" min="2" max="120" value="10" data-key="ma2" oninput="sliderChanged(this)"><span class="val" id="ma2Val">10</span></div>
+      <div class="param-row"><label>MA3</label><input type="range" min="2" max="120" value="20" data-key="ma3" oninput="sliderChanged(this)"><span class="val" id="ma3Val">20</span></div>
+      <div class="param-row"><label>MA4</label><input type="range" min="2" max="200" value="60" data-key="ma4" oninput="sliderChanged(this)"><span class="val" id="ma4Val">60</span></div>
+      <div class="param-hint">均线周期（天），MA4用虚线显示</div>
+    </div>
+    <div id="paramsRsi" class="params" style="display:none">
+      <div class="param-row"><label>周期 N</label><input type="range" min="2" max="50" value="14" data-key="rsiN" oninput="sliderChanged(this)"><span class="val" id="rsiNVal">14</span></div>
+      <div class="param-row"><label>超买线</label><input type="range" min="50" max="95" value="70" data-key="rsiOB" oninput="sliderChanged(this)"><span class="val" id="rsiOBVal">70</span></div>
+      <div class="param-row"><label>超卖线</label><input type="range" min="5" max="50" value="30" data-key="rsiOS" oninput="sliderChanged(this)"><span class="val" id="rsiOSVal">30</span></div>
+    </div>
+    <div id="paramsMacd" class="params" style="display:none">
+      <div class="param-row"><label>快线</label><input type="range" min="2" max="50" value="12" data-key="macdF" oninput="sliderChanged(this)"><span class="val" id="macdFVal">12</span></div>
+      <div class="param-row"><label>慢线</label><input type="range" min="2" max="100" value="26" data-key="macdS" oninput="sliderChanged(this)"><span class="val" id="macdSVal">26</span></div>
+      <div class="param-row"><label>信号</label><input type="range" min="2" max="30" value="9" data-key="macdSig" oninput="sliderChanged(this)"><span class="val" id="macdSigVal">9</span></div>
+    </div>
+    <div id="paramsBb" class="params" style="display:none">
+      <div class="param-row"><label>周期 N</label><input type="range" min="5" max="60" value="20" data-key="bbN" oninput="sliderChanged(this)"><span class="val" id="bbNVal">20</span></div>
+      <div class="param-row"><label>倍数 K</label><input type="range" min="1" max="4" step="0.1" value="2" data-key="bbK" oninput="sliderChanged(this)"><span class="val" id="bbKVal">2.0</span></div>
+    </div>
+    <div id="paramsSharpe" class="params" style="display:none">
+      <div class="param-row"><label>窗口</label><input type="range" min="20" max="252" value="60" data-key="shW" oninput="sliderChanged(this)"><span class="val" id="shWVal">60</span></div>
+      <div class="param-row"><label>无风险%</label><input type="range" min="0" max="10" step="0.1" value="1.5" data-key="shRf" oninput="sliderChanged(this)"><span class="val" id="shRfVal">1.5</span></div>
+    </div>
+    <div id="paramsVolatility" class="params" style="display:none">
+      <div class="param-row"><label>窗口</label><input type="range" min="5" max="120" value="20" data-key="volW" oninput="sliderChanged(this)"><span class="val" id="volWVal">20</span></div>
+    </div>
+  </div>
+
+  <div style="font-size:10px;color:var(--muted);padding:4px;line-height:1.6">
+    使用说明：选择股票后自动加载数据，在左侧面板调节参数，图表实时重绘。点击指标名称切换参数面板。
+  </div>
+
+  <!-- Key metrics summary -->
+  <div class="section" style="border-bottom:none">
+    <h3>关键指标摘要</h3>
+    <div id="metricSummary" style="font-size:11px;color:var(--muted);line-height:1.8">
+      选择股票后自动计算...
+    </div>
+  </div>
+</div>
+
+<div class="content" id="chartArea">
+  <div class="card" id="cardPrice">
+    <h2>K线图 + 均线 + 布林带 <span class="tag" id="trendTag">--</span></h2>
+    <div class="chart-main"><canvas id="mainChart"></canvas></div>
+  </div>
+  <div class="card" id="cardRsi">
+    <h2>RSI 相对强弱指标 <span class="tag neutral" id="rsiTag">--</span></h2>
+    <div class="chart-sub"><canvas id="rsiChart"></canvas></div>
+  </div>
+  <div class="card" id="cardMacd">
+    <h2>MACD <span class="tag neutral" id="macdTag">--</span></h2>
+    <div class="chart-sub"><canvas id="macdChart"></canvas></div>
+  </div>
+  <div class="card" id="cardSharpe">
+    <h2>滚动夏普比率 <span class="tag neutral" id="sharpeTag">--</span></h2>
+    <div class="chart-sub"><canvas id="sharpeChart"></canvas></div>
+  </div>
+  <div class="card" id="cardVolatility" style="display:none">
+    <h2>滚动波动率 (年化) <span class="tag neutral" id="volTag">--</span></h2>
+    <div class="chart-sub"><canvas id="volChart"></canvas></div>
+  </div>
+</div>
+</div>
+
+<script>
+// ========== STOCK DATA ==========
+const STOCK_DATA = __DATA_PLACEHOLDER__;
+const TS_MAP = {kingfa:"600143.SH", catl:"300750.SZ", byd:"002594.SZ"};
+let currentStock = "kingfa";
+let data = STOCK_DATA[TS_MAP[currentStock]];
+
+// ========== Calculator Engine ==========
+const CALC = {
+  ma(arr,n){
+    const r=new Array(arr.length).fill(null);
+    for(let i=n-1;i<arr.length;i++){
+      let s=0;for(let j=i-n+1;j<=i;j++)s+=arr[j];
+      r[i]=s/n;
+    }
+    return r;
+  },
+  ema(arr,n){
+    const k=2/(n+1),r=[arr[0]];
+    for(let i=1;i<arr.length;i++)r.push(arr[i]*k+r[i-1]*(1-k));
+    return r;
+  },
+  rsi(prices,n){
+    const r=new Array(prices.length).fill(null);
+    let ag=0,al=0;
+    for(let i=1;i<=n;i++){const d=prices[i]-prices[i-1];ag+=Math.max(0,d);al+=Math.max(0,-d)}
+    ag/=n;al/=n;
+    r[n]=al===0?100:100-100/(1+ag/al);
+    for(let i=n+1;i<prices.length;i++){
+      const d=prices[i]-prices[i-1],g=Math.max(0,d),l=Math.max(0,-d);
+      ag=(ag*(n-1)+g)/n;al=(al*(n-1)+l)/n;
+      r[i]=al===0?100:100-100/(1+ag/al);
+    }
+    return r;
+  },
+  macd(prices,f,s,sig){
+    const ef=this.ema(prices,f),es=this.ema(prices,s);
+    const dif=ef.map((v,i)=>v-es[i]);
+    const dea=this.ema(dif,sig);
+    const bar=dif.map((v,i)=>2*(v-dea[i]));
+    return {dif,dea,bar};
+  },
+  bb(prices,n,k){
+    const mid=this.ma(prices,n);
+    const up=new Array(prices.length).fill(null);
+    const dn=new Array(prices.length).fill(null);
+    for(let i=n-1;i<prices.length;i++){
+      const s=prices.slice(i-n+1,i+1),m=mid[i];
+      const v=s.reduce((a,x)=>a+(x-m)*(x-m),0)/n;
+      const std=Math.sqrt(v);
+      up[i]=m+k*std;dn[i]=m-k*std;
+    }
+    return {mid,up,dn};
+  },
+  rollingSharpe(dailyRet,window,rf){
+    const rd=rf/252;
+    const r=new Array(dailyRet.length).fill(null);
+    for(let i=window;i<dailyRet.length;i++){
+      const w=dailyRet.slice(i-window,i);
+      const mu=w.reduce((a,b)=>a+b,0)/window;
+      const v=w.reduce((s,x)=>s+(x-mu)*(x-mu),0)/(window-1);
+      const sig=Math.sqrt(v);
+      r[i]=sig>0?(mu*252-rf)/(sig*Math.sqrt(252)):null;
+    }
+    return r;
+  },
+  rollingVol(dailyRet,window){
+    const r=new Array(dailyRet.length).fill(null);
+    for(let i=window;i<dailyRet.length;i++){
+      const w=dailyRet.slice(i-window,i);
+      const mu=w.reduce((a,b)=>a+b,0)/window;
+      const v=w.reduce((s,x)=>s+(x-mu)*(x-mu),0)/(window-1);
+      r[i]=Math.sqrt(v)*Math.sqrt(252)*100;
+    }
+    return r;
+  }
+};
+
+// ========== Parameters ==========
+let P = {
+  ma1:5,ma2:10,ma3:20,ma4:60,
+  rsiN:14,rsiOB:70,rsiOS:30,
+  macdF:12,macdS:26,macdSig:9,
+  bbN:20,bbK:2.0,
+  shW:60,shRf:1.5,
+  volW:20
+};
+
+// ========== Chart Management ==========
+let charts = {};
+const COX = {grid:{display:false},ticks:{maxTicksLimit:12,font:{size:10},autoSkip:true,maxRotation:0}};
+const COY = {grid:{color:'#f0f0f0'},ticks:{font:{size:10}}};
+
+const candlestickPlugin = {
+  id:'candlestick',
+  afterDatasetsDraw(ch){
+    const ctx=ch.ctx,m=ch.getDatasetMeta(0);
+    if(!m||!m.data)return;
+    const xs=ch.scales.x,ys=ch.scales.y;
+    const bw=Math.max(2,xs.width/Math.max(data.dates.length,1)*0.6);
+    ctx.save();
+    for(let i=0;i<data.dates.length;i++){
+      const x=xs.getPixelForValue(i);
+      const o=ys.getPixelForValue(data.o[i]),c=ys.getPixelForValue(data.c[i]);
+      const h=ys.getPixelForValue(data.h[i]),l=ys.getPixelForValue(data.l[i]);
+      const color=data.c[i]>=data.o[i]?'#E24B4A':'#1D9E75';
+      ctx.strokeStyle=color;ctx.lineWidth=0.8;
+      ctx.beginPath();ctx.moveTo(x,l);ctx.lineTo(x,h);ctx.stroke();
+      ctx.fillStyle=color;
+      const t=Math.min(o,c),b=Math.max(o,c);
+      ctx.fillRect(x-bw/2,t,bw,Math.max(b-t,0.5));
+    }
+    ctx.restore();
+  }
+};
+
+function destroyAll(){
+  Object.values(charts).forEach(c=>{try{c.destroy()}catch(e){}});
+  charts={};
+}
+
+function baseOpts(maintainAspectRatio=false,resp=true){
+  return {responsive:resp,maintainAspectRatio,interaction:{intersect:false,mode:'index'}};
+}
+
+// ========== Panel Builders ==========
+function buildMain(){
+  const bb=CALC.bb(data.c,P.bbN,P.bbK);
+  const mas=[CALC.ma(data.c,P.ma1),CALC.ma(data.c,P.ma2),CALC.ma(data.c,P.ma3),CALC.ma(data.c,P.ma4)];
+  const cols=['#534AB7','#F0997B','#378ADD','#888780'];
+  const labs=[P.ma1,P.ma2,P.ma3,P.ma4];
+  const ds=[
+    {data:data.c,borderColor:'transparent',pointRadius:0,order:1},
+    ...mas.map((m,i)=>({label:'MA'+labs[i],data:m,borderColor:cols[i],borderWidth:i===0?1.3:1,pointRadius:0,fill:false,borderDash:i===3?[3,3]:undefined,order:2})),
+    {label:'BB上轨',data:bb.up,borderColor:'#B5D4F4',borderWidth:1,pointRadius:0,fill:false,order:3},
+    {label:'BB中轨',data:bb.mid,borderColor:'#378ADD',borderWidth:0.7,borderDash:[2,4],pointRadius:0,fill:false,order:3},
+    {label:'BB下轨',data:bb.dn,borderColor:'#B5D4F4',borderWidth:1,pointRadius:0,fill:{target:'+1',above:'rgba(55,138,221,0.04)',below:'rgba(55,138,221,0.04)'},order:3},
+  ];
+  const ctx=document.getElementById('mainChart').getContext('2d');
+  charts.main=new Chart(ctx,{
+    type:'line',plugins:[candlestickPlugin],
+    data:{labels:data.dates,datasets:ds},
+    options:{
+      ...baseOpts(false),
+      scales:{x:COX,y:{...COY,ticks:{...COY.ticks,callback:v=>v.toFixed(1)}}},
+      plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,padding:8,font:{size:9},filter:i=>i.text!==''}}},
+      animation:false
+    }
+  });
+
+  // Trend tag
+  const li=data.dates.length-1;
+  const mv=[mas[0][li],mas[1][li],mas[2][li]];
+  const tt=document.getElementById('trendTag');
+  if(mv[0]&&mv[1]&&mv[2]){
+    if(mv[0]>mv[1]&&mv[1]>mv[2]){tt.textContent='多头排列';tt.className='tag pos';}
+    else if(mv[0]<mv[1]&&mv[1]<mv[2]){tt.textContent='空头排列';tt.className='tag neg';}
+    else{tt.textContent='交叉震荡';tt.className='tag neutral';}
+  }
+}
+
+function buildRsi(){
+  const r=CALC.rsi(data.c,P.rsiN);
+  const ctx=document.getElementById('rsiChart').getContext('2d');
+  charts.rsi=new Chart(ctx,{
+    type:'line',
+    data:{labels:data.dates,datasets:[
+      {label:'RSI('+P.rsiN+')',data:r,borderColor:'#534AB7',borderWidth:1.5,pointRadius:0,fill:false},
+      {label:'超买 '+P.rsiOB,data:Array(data.dates.length).fill(P.rsiOB),borderColor:'#E24B4A',borderWidth:0.8,borderDash:[4,4],pointRadius:0,fill:false},
+      {label:'超卖 '+P.rsiOS,data:Array(data.dates.length).fill(P.rsiOS),borderColor:'#1D9E75',borderWidth:0.8,borderDash:[4,4],pointRadius:0,fill:false},
+    ]},
+    options:{
+      ...baseOpts(),
+      scales:{x:COX,y:{min:0,max:100,...COY,ticks:{...COY.ticks,stepSize:20}}},
+      plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,padding:6,font:{size:9},filter:i=>i.text!==''}}},
+      animation:false
+    }
+  });
+  const lv=r[r.length-1];
+  const rt=document.getElementById('rsiTag');
+  if(lv!==null){
+    rt.textContent='当前: '+lv.toFixed(1)+(lv>P.rsiOB?' 超买':lv<P.rsiOS?' 超卖':' 中性');
+    rt.className='tag '+(lv>P.rsiOB?'pos':lv<P.rsiOS?'neg':'neutral');
+  }
+}
+
+function buildMacd(){
+  const m=CALC.macd(data.c,P.macdF,P.macdS,P.macdSig);
+  const bc=m.bar.map((v,i)=>{
+    if(i===0||m.bar[i-1]===null)return v>=0?'#E24B4A':'#1D9E75';
+    return v>=m.bar[i-1]?'#E24B4A':'#1D9E75';
+  });
+  const ctx=document.getElementById('macdChart').getContext('2d');
+  charts.macd=new Chart(ctx,{
+    type:'bar',
+    data:{labels:data.dates,datasets:[
+      {type:'bar',label:'MACD',data:m.bar,backgroundColor:bc,borderWidth:0,order:2},
+      {type:'line',label:'DIF',data:m.dif,borderColor:'#534AB7',borderWidth:1.2,pointRadius:0,fill:false,order:1},
+      {type:'line',label:'DEA',data:m.dea,borderColor:'#F0997B',borderWidth:1.2,pointRadius:0,fill:false,order:1},
+    ]},
+    options:{
+      ...baseOpts(),
+      scales:{x:COX,y:COY},
+      plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,padding:6,font:{size:9},filter:i=>i.text!==''}}},
+      animation:false
+    }
+  });
+  const li=m.dif.length-1;
+  const mt=document.getElementById('macdTag');
+  if(m.dif[li]>m.dea[li]){mt.textContent='DIF>DEA 看多';mt.className='tag pos';}
+  else{mt.textContent='DIF<DEA 看空';mt.className='tag neg';}
+}
+
+function buildSharpe(){
+  const ret=data.c.map((c,i)=>i===0?0:(c-data.c[i-1])/data.c[i-1]);
+  const s=CALC.rollingSharpe(ret,P.shW,P.shRf/100);
+  const ctx=document.getElementById('sharpeChart').getContext('2d');
+  charts.sharpe=new Chart(ctx,{
+    type:'line',
+    data:{labels:data.dates,datasets:[
+      {label:'滚动夏普('+P.shW+'日)',data:s,borderColor:'#534AB7',borderWidth:1.5,pointRadius:0,fill:false},
+      {label:'0',data:Array(data.dates.length).fill(0),borderColor:'#888780',borderWidth:0.5,borderDash:[2,4],pointRadius:0,fill:false},
+      {label:'1.0',data:Array(data.dates.length).fill(1),borderColor:'#1D9E75',borderWidth:0.5,borderDash:[2,4],pointRadius:0,fill:false},
+    ]},
+    options:{
+      ...baseOpts(),
+      scales:{x:COX,y:COY},
+      plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,padding:6,font:{size:9},filter:i=>i.text!==''}}},
+      animation:false
+    }
+  });
+  const sv=s.filter(v=>v!==null);
+  const ls=sv.length?sv[sv.length-1]:null;
+  const st=document.getElementById('sharpeTag');
+  if(ls!==null){
+    st.textContent='当前: '+ls.toFixed(2)+(ls>1?' 优秀':ls>0?' 良好':' 为负');
+    st.className='tag '+(ls>1?'pos':ls>0?'neutral':'neg');
+  }
+}
+
+function buildVol(){
+  const ret=data.c.map((c,i)=>i===0?0:(c-data.c[i-1])/data.c[i-1]);
+  const v=CALC.rollingVol(ret,P.volW);
+  const ctx=document.getElementById('volChart').getContext('2d');
+  charts.vol=new Chart(ctx,{
+    type:'line',
+    data:{labels:data.dates,datasets:[
+      {label:'年化波动率('+P.volW+'日) %',data:v,borderColor:'#888780',borderWidth:1.5,pointRadius:0,fill:false}
+    ]},
+    options:{
+      ...baseOpts(),
+      scales:{x:COX,y:COY},
+      plugins:{legend:{display:true,position:'top',labels:{usePointStyle:true,padding:6,font:{size:9}}}},
+      animation:false
+    }
+  });
+  const vv=v.filter(x=>x!==null);
+  const lv=vv.length?vv[vv.length-1]:null;
+  const vt=document.getElementById('volTag');
+  if(lv!==null)vt.textContent='当前: '+lv.toFixed(1)+'%';
+}
+
+// ========== Refresh ==========
+function refreshAll(){
+  destroyAll();
+  if(document.getElementById('togPrice').checked)buildMain();
+  if(document.getElementById('togRsi').checked)buildRsi();
+  if(document.getElementById('togMacd').checked)buildMacd();
+  if(document.getElementById('togSharpe').checked)buildSharpe();
+  if(document.getElementById('togVolatility').checked)buildVol();
+  updateSummary();
+}
+
+// ========== Debounced Slider ==========
+let timer=null;
+function sliderChanged(el){
+  const k=el.dataset.key, v=parseFloat(el.value);
+  el.nextElementSibling.textContent=v;
+  P[k]=v;
+  // Update desc text
+  if(k.startsWith('ma'))updateDesc();
+  if(k.startsWith('rsi')){document.getElementById('indDesc_rsi').textContent='Wilder '+P.rsiN;}
+  if(k.startsWith('macd')){document.getElementById('indDesc_macd').textContent=P.macdF+'/'+P.macdS+'/'+P.macdSig;}
+  if(k.startsWith('bb')){document.getElementById('indDesc_bb').textContent=P.bbN+', '+P.bbK.toFixed(1);}
+  if(k.startsWith('sh')){document.getElementById('indDesc_sharpe').textContent=P.shW+'日';}
+  if(k==='volW'){document.getElementById('indDesc_volatility').textContent=P.volW+'日';}
+  if(timer)clearTimeout(timer);
+  timer=setTimeout(refreshAll,200);
+}
+
+function updateDesc(){
+  document.getElementById('indDesc_price').textContent=[P.ma1,P.ma2,P.ma3,P.ma4].join('/');
+}
+
+// ========== Toggle Panels ==========
+function togglePanel(id){
+  const checked=document.getElementById('tog'+id.charAt(0).toUpperCase()+id.slice(1)).checked;
+  const cardMap={price:'cardPrice',rsi:'cardRsi',macd:'cardMacd',sharpe:'cardSharpe',volatility:'cardVolatility'};
+  const el=document.getElementById(cardMap[id]);
+  if(el)el.style.display=checked?'':'none';
+  if(id==='bb')refreshAll();
+}
+
+function selectIndicator(id){
+  document.querySelectorAll('.ind-item').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.params').forEach(e=>e.style.display='none');
+  const pMap={price:'paramsPrice',rsi:'paramsRsi',macd:'paramsMacd',bb:'paramsBb',sharpe:'paramsSharpe',volatility:'paramsVolatility'};
+  if(pMap[id])document.getElementById(pMap[id]).style.display='';
+  const el=document.getElementById('indItem_'+id);
+  if(el)el.classList.add('active');
+}
+
+// ========== Stock Switch ==========
+function switchStock(id){
+  currentStock=id;
+  data=STOCK_DATA[TS_MAP[id]];
+  document.getElementById('dataInfo').textContent=data.dates[0].slice(0,7)+' ~ '+data.dates[data.dates.length-1].slice(0,7)+' · '+data.dates.length+'条';
+  document.getElementById('livePrice').textContent=STOCK_DATA[TS_MAP[id]].name+' 最新: '+data.c[data.c.length-1].toFixed(2);
+  refreshAll();
+}
+
+document.getElementById('stockSelect').addEventListener('change',function(){switchStock(this.value);});
+
+// ========== Reset ==========
+document.getElementById('btnReset').addEventListener('click',function(){
+  const defs={ma1:5,ma2:10,ma3:20,ma4:60,rsiN:14,rsiOB:70,rsiOS:30,macdF:12,macdS:26,macdSig:9,bbN:20,bbK:2.0,shW:60,shRf:1.5,volW:20};
+  Object.assign(P,defs);
+  document.querySelectorAll('.params input[type=range]').forEach(el=>{
+    const k=el.dataset.key;
+    if(defs[k]!==undefined){el.value=defs[k];el.nextElementSibling.textContent=defs[k];P[k]=defs[k];}
+  });
+  updateDesc();
+  document.getElementById('indDesc_rsi').textContent='Wilder 14';
+  document.getElementById('indDesc_macd').textContent='12/26/9';
+  document.getElementById('indDesc_bb').textContent='20, 2.0';
+  document.getElementById('indDesc_sharpe').textContent='60日';
+  document.getElementById('indDesc_volatility').textContent='20日';
+  refreshAll();
+});
+
+// ========== Summary Metrics ==========
+function updateSummary(){
+  const ret=data.c.map((c,i)=>i===0?0:(c-data.c[i-1])/data.c[i-1]).slice(1);
+  if(!ret.length)return;
+  const mu=ret.reduce((a,b)=>a+b,0)/ret.length;
+  const sig=Math.sqrt(ret.reduce((s,x)=>s+(x-mu)*(x-mu),0)/(ret.length-1));
+  const annR=mu*252,annV=sig*Math.sqrt(252);
+  const sharpe=annV>0?(annR-0.015)/annV:0;
+  const cum=ret.reduce((a,b)=>a*(1+b),1);
+  const mdd=Math.min(...ret.reduce((a,r)=>{const c=a.length?a[a.length-1]*(1+r):1*(1+r);a.push(c);return a;},[]).map((v,i,arr)=>{const p=Math.max(...arr.slice(0,i+1));return(v-p)/p;}));
+  document.getElementById('metricSummary').innerHTML=
+    '年化收益: <b>'+(annR*100).toFixed(1)+'%</b> &nbsp;|&nbsp; '+
+    '年化波动: <b>'+(annV*100).toFixed(1)+'%</b> &nbsp;|&nbsp; '+
+    '夏普: <b>'+sharpe.toFixed(2)+'</b> &nbsp;|&nbsp; '+
+    '最大回撤: <b>'+(mdd*100).toFixed(1)+'%</b>';
+}
+
+// ========== Init ==========
+(function init(){
+  document.getElementById('dataInfo').textContent=data.dates[0].slice(0,7)+' ~ '+data.dates[data.dates.length-1].slice(0,7)+' · '+data.dates.length+'条';
+  document.getElementById('livePrice').textContent='金发科技 最新: '+data.c[data.c.length-1].toFixed(2);
+  selectIndicator('price');
+  refreshAll();
+})();
+</script>
+</body>
+</html>
